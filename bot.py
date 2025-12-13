@@ -246,21 +246,36 @@ def extract_owner(details: Optional[Dict[str, Any]]) -> Optional[str]:
 	return str(name)
 
 
+def regional_pricing_enabled(details: Optional[Dict[str, Any]]) -> Optional[bool]:
+	if not details:
+		return None
+	pi = details.get("priceInformation") or {}
+	enabled = [str(x).lower() for x in (pi.get("enabledFeatures") or [])]
+	if pi.get("isInActivePriceOptimizationExperiment"):
+		return True
+	if any(("regional" in x) or ("price" in x) for x in enabled):
+		return True
+	return False
+
+
 # ---------------- Embeds ----------------
 BLACK = discord.Color(0x000000)
 
 
-def build_card(price: Optional[int], owner: Optional[str], gp_id: str) -> discord.Embed:
+def build_card(price: Optional[int], owner: Optional[str], rp_enabled: Optional[bool], gp_id: str) -> discord.Embed:
 	rec = robux_received_after_fee(price)
 	price_txt = f"{price} Robux" if price is not None else "—"
 	rec_txt = f"{rec} Robux" if rec is not None else "—"
+	rp_label = "Enabled" if rp_enabled else ("Disabled" if rp_enabled is False else "Unknown")
+	rp_dot = "<a:Exclamation:1449272852338446457>" if rp_enabled else ("<a:Red_Check:1449273074456465418>" if rp_enabled is False else "<a:PenguHmmMath:1439407116111843388> ")
 
 	e = discord.Embed(title="Gamepass Summary", color=BLACK)
 	owner_line = f"*Owner:* {owner}\n\n" if owner else ""
 	e.description = (
 		owner_line
 		+ f"**Gamepass Price** · `{price_txt}`\n"
-		+ f"**You will receive** · `{rec_txt}`"
+		+ f"**You will receive** · `{rec_txt}`\n"
+		+ f"**Regional Pricing** · {rp_dot} **{rp_label}**"
 	)
 	url = f"https://www.roblox.com/game-pass/{gp_id}"
 	e.add_field(name="Gamepass ID", value=f"`{gp_id}`", inline=True)
@@ -302,7 +317,8 @@ async def scan_one(gp_id: str, *, force: bool = False) -> Tuple[discord.Embed, O
 		_clear_gp_cache(gp_id)
 	price, details = await best_price_and_details(gp_id, force=force)
 	owner = extract_owner(details)
-	embed = build_card(price, owner, gp_id)
+	rp = regional_pricing_enabled(details)
+	embed = build_card(price, owner, rp, gp_id)
 	return embed, price
 
 
@@ -323,7 +339,7 @@ async def build_embeds_for_ids(gp_ids: List[str], *, force: bool) -> List[discor
 					total_price += int(price)
 				return embed
 			except Exception:
-				e = discord.Embed(title="Gamepass Summary", color=BLACK)
+				e = discord.Embed(title="<a:Butterfly_Red:1449273839052914891> Gamepass Summary", color=BLACK)
 				e.description = (
 					"*Owner:* —\n\n"
 					"**Gamepass Price** · `—`\n"
@@ -348,7 +364,7 @@ async def send_embeds_chunked(send_func, embeds: List[discord.Embed]):
 
 # ---------------- Commands ----------------
 def build_help_embed() -> discord.Embed:
-	e = discord.Embed(title="Commands", color=BLACK)
+	e = discord.Embed(title="<a:Butterfly_Red:1449273839052914891> Commands", color=BLACK)
 	e.add_field(
 		name="Slash",
 		value="`/ping`\n`/scan link_or_id:<value> force:<true|false>`\n`/multi links:<values> force:<true|false>`\n`/help`",
@@ -379,7 +395,7 @@ async def help_slash(interaction: discord.Interaction):
 
 @bot.tree.command(name="ping", description="Ping")
 async def ping_slash(interaction: discord.Interaction):
-	await interaction.response.send_message("pong")
+	await interaction.response.send_message("<a:Butterfly_Red:1449273839052914891> pong")
 
 
 @bot.tree.command(name="scan", description="Scan a single gamepass")
@@ -388,7 +404,7 @@ async def scan_slash(interaction: discord.Interaction, link_or_id: str, force: b
 	await interaction.response.defer(thinking=True)
 	gp_id = extract_gamepass_id(link_or_id)
 	if not gp_id:
-		return await interaction.followup.send("❌ Please provide a valid game-pass link or numeric ID.")
+		return await interaction.followup.send("<a:Exclamation:1449272852338446457> Please provide a valid game-pass link or numeric ID.")
 	embed, _ = await scan_one(gp_id, force=force)
 	await interaction.followup.send(embed=embed)
 
@@ -399,7 +415,7 @@ async def multi_slash(interaction: discord.Interaction, links: str, force: bool 
 	await interaction.response.defer(thinking=True)
 	gp_ids = extract_many_ids(links)
 	if not gp_ids:
-		return await interaction.followup.send("❌ Provide at least one valid game-pass link or numeric ID.")
+		return await interaction.followup.send("<a:Exclamation:1449272852338446457> Provide at least one valid game-pass link or numeric ID.")
 	embeds = await build_embeds_for_ids(gp_ids, force=force)
 
 	async def _send(**kw):
