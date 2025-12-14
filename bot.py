@@ -23,7 +23,7 @@ import aiohttp
 
 
 # ---------------- Config ----------------
-NOTE_TEXT = "[beta 0.1.2]"
+NOTE_TEXT = "[beta 0.1.3]"
 CACHE_TTL_SECONDS = int(os.getenv("CACHE_TTL_SECONDS", "300"))
 API_RPS = float(os.getenv("API_RPS", "3"))
 API_BURST = int(os.getenv("API_BURST", "6"))
