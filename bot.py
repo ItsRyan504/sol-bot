@@ -23,7 +23,7 @@ import aiohttp
 
 
 # ---------------- Config ----------------
-NOTE_TEXT = "[beta 0.1.3]"
+NOTE_TEXT = "[beta 0.1.4]"
 CACHE_TTL_SECONDS = int(os.getenv("CACHE_TTL_SECONDS", "300"))
 API_RPS = float(os.getenv("API_RPS", "3"))
 API_BURST = int(os.getenv("API_BURST", "6"))
@@ -257,6 +257,14 @@ def regional_pricing_enabled(details: Optional[Dict[str, Any]]) -> Optional[bool
     return False
 
 
+def build_not_found_embed(gp_id: str) -> discord.Embed:
+    e = discord.Embed(title="Gamepass Not Found", color=CARD_COLOR)
+    e.description = f"<a:Exclamation:1449272852338446457> Could not find gamepass `{gp_id}`."
+    e.add_field(name="Gamepass ID", value=f"`{gp_id}`", inline=True)
+    e.add_field(name="URL", value=f"[Open Gamepass](https://www.roblox.com/game-pass/{gp_id})", inline=True)
+    return e
+
+
 # ---------------- Embeds ----------------
 # Use a neutral gray accent for all embeds.
 CARD_COLOR = discord.Color(0x808080)
@@ -318,6 +326,8 @@ async def scan_one(gp_id: str, *, force: bool = False) -> Tuple[discord.Embed, O
     if force:
         _clear_gp_cache(gp_id)
     price, details = await best_price_and_details(gp_id, force=force)
+    if price is None and details is None:
+        return build_not_found_embed(gp_id), None
     owner = extract_owner(details)
     rp = regional_pricing_enabled(details)
     embed = build_card(price, owner, rp, gp_id)
@@ -347,7 +357,7 @@ async def build_embeds_for_ids(gp_ids: List[str], *, force: bool) -> List[discor
                     "**Gamepass Price · **  ``\n"
                     "**You will receive · **  ``\n"
                     f"{SEPARATOR_LINE}\n\n"
-                    f"`Failed to scan ID {gid}`"
+                    f"<a:Exclamation:1449272852338446457> Failed to scan ID {gid}"
                 )
                 e.add_field(name="Gamepass ID", value=f"`{gid}`", inline=True)
                 e.add_field(name="URL", value=f"[Open Gamepass](https://www.roblox.com/game-pass/{gid})", inline=True)
