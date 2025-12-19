@@ -23,7 +23,7 @@ import aiohttp
 
 
 # ---------------- Config ----------------
-NOTE_TEXT = "[beta 0.1.4]"
+NOTE_TEXT = "[beta 0.1.5]"
 CACHE_TTL_SECONDS = int(os.getenv("CACHE_TTL_SECONDS", "300"))
 API_RPS = float(os.getenv("API_RPS", "3"))
 API_BURST = int(os.getenv("API_BURST", "6"))
@@ -295,9 +295,12 @@ def build_card(price: Optional[int], owner: Optional[str], rp_enabled: Optional[
 
 def build_summary(total_price: int, n_scanned: int, n_with_price: int) -> discord.Embed:
     missing = n_scanned - n_with_price
+    fee_total = round_half_up(total_price * 0.30) if total_price else 0
+    covered_tax = max(total_price - fee_total, 0)
     e = discord.Embed(title="<a:Butterfly_Red:1449273839052914891> Multi-Scan Summary", color=CARD_COLOR)
     e.description = (
         f"**Total Gamepass Price · **  `{total_price} Robux`\n"
+        f"**Covered Tax · **  `{covered_tax} Robux`\n"
         f"**Items scanned · **  `{n_scanned}` (with price: `{n_with_price}`, missing: `{missing}`)"
     )
     return e
