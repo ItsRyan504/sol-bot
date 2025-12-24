@@ -23,12 +23,18 @@ from discord import app_commands
 import aiohttp
 
 
+# ---------------- Logging ----------------
+logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(name)s: %(message)s")
+log = logging.getLogger("gp-scanner")
+
+
 # ---------------- Config ----------------
 STATUS_MESSAGES = [
     "SCAN NOW TO CHECK GAMEPASS PRICES!",
     "DON'T FORGET TO SCAN GAMEPASS LINKS!",
 ]
 NOTE_TEXT = STATUS_MESSAGES[0]
+MAX_AVATAR_BYTES = 8 * 1024 * 1024
 CACHE_TTL_SECONDS = int(os.getenv("CACHE_TTL_SECONDS", "300"))
 API_RPS = float(os.getenv("API_RPS", "3"))
 API_BURST = int(os.getenv("API_BURST", "6"))
@@ -37,11 +43,6 @@ DISCORD_TOKEN = os.getenv("DISCORD_TOKEN", "").strip()
 
 if not DISCORD_TOKEN:
     raise SystemExit("DISCORD_TOKEN not set in .env")
-
-
-# ---------------- Logging ----------------
-logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(name)s: %(message)s")
-log = logging.getLogger("gp-scanner")
 
 
 # ---------------- Discord init ----------------
@@ -401,12 +402,19 @@ async def before_rotate():
     await bot.wait_until_ready()
 
 
+def _has_admin_access(interaction: discord.Interaction) -> bool:
+    if not interaction.guild:
+        return False
+    perms = getattr(interaction.user, "guild_permissions", None)
+    return bool(perms and perms.administrator)
+
+
 # ---------------- Commands ----------------
 def build_help_embed() -> discord.Embed:
     e = discord.Embed(title="<a:Butterfly_Red:1449273839052914891> Commands", color=CARD_COLOR)
     e.add_field(
         name="Slash",
-        value="`/ping`\n`/scan link_or_id:<value> force:<true|false>`\n`/multi links:<values> force:<true|false>`\n`/help`",
+        value="`/ping`\n`/scan link_or_id:<value> force:<true|false>`\n`/multi links:<values> force:<true|false>`\n`/changeprofile image:<attachment> (admin only)`\n`/help`",
         inline=False,
     )
     e.set_footer(text="Tip: paste multiple links/IDs with spaces, commas, or newlines.")
@@ -434,6 +442,46 @@ async def help_slash(interaction: discord.Interaction):
 @bot.tree.command(name="ping", description="Ping")
 async def ping_slash(interaction: discord.Interaction):
     await interaction.response.send_message("<a:Butterfly_Red:1449273839052914891> pong")
+
+
+@bot.tree.command(name="changeprofile", description="Update the bot avatar (server admin only)")
+@app_commands.describe(image="Image attachment to use as the bot's avatar")
+@app_commands.guild_only()
+async def changeprofile_slash(interaction: discord.Interaction, image: discord.Attachment):
+    if not _has_admin_access(interaction):
+        await interaction.response.send_message(
+            "<a:Exclamation:1449272852338446457> Only server administrators can run this command.",
+            ephemeral=True,
+        )
+        return
+    if not image.content_type or not image.content_type.startswith("image/"):
+        await interaction.response.send_message(
+            "<a:Exclamation:1449272852338446457> Please upload a valid image.",
+            ephemeral=True,
+        )
+        return
+    if image.size and image.size > MAX_AVATAR_BYTES:
+        await interaction.response.send_message(
+            f"<a:Exclamation:1449272852338446457> Image must be {MAX_AVATAR_BYTES // (1024 * 1024)} MB or smaller.",
+            ephemeral=True,
+        )
+        return
+    try:
+        data = await image.read()
+        if not bot.user:
+            raise RuntimeError("Bot user not ready")
+        await bot.user.edit(avatar=data)
+    except Exception as exc:
+        log.warning("Avatar update failed: %s", exc)
+        await interaction.response.send_message(
+            "<a:Exclamation:1449272852338446457> Failed to update avatar. Try a different image.",
+            ephemeral=True,
+        )
+        return
+    await interaction.response.send_message(
+        "<a:Red_Check:1449273074456465418> Bot avatar updated successfully!",
+        ephemeral=True,
+    )
 
 
 @bot.tree.command(name="scan", description="Scan a single gamepass")
