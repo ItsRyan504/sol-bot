@@ -265,7 +265,7 @@ def regional_pricing_enabled(details: Optional[Dict[str, Any]]) -> Optional[bool
 
 
 def build_not_found_embed(gp_id: str) -> discord.Embed:
-    e = discord.Embed(title="Gamepass Not Found", color=CARD_COLOR)
+    e = discord.Embed(title="Gamepass Not Found")
     e.description = f"<a:Exclamation:1449272852338446457> Could not find gamepass `{gp_id}`."
     e.add_field(name="Gamepass ID", value=f"`{gp_id}`", inline=True)
     e.add_field(name="URL", value=f"[Open Gamepass](https://www.roblox.com/game-pass/{gp_id})", inline=True)
@@ -274,7 +274,6 @@ def build_not_found_embed(gp_id: str) -> discord.Embed:
 
 # ---------------- Embeds ----------------
 # Match Discord's default so the accent disappears.
-CARD_COLOR = discord.Color.default()
 SEPARATOR_LINE = "------------------------------"
 
 
@@ -285,7 +284,7 @@ def build_card(price: Optional[int], owner: Optional[str], rp_enabled: Optional[
     rp_label = "Enabled" if rp_enabled else ("Disabled" if rp_enabled is False else "Unknown")
     rp_dot = "<a:Exclamation:1449272852338446457>" if rp_enabled else ("<a:Red_Check:1449273074456465418>" if rp_enabled is False else "<a:PenguHmmMath:1439407116111843388> ")
 
-    e = discord.Embed(title="Gamepass Summary", color=CARD_COLOR)
+    e = discord.Embed(title="Gamepass Summary")
     owner_line = f"*Owner:* {owner}\n\n" if owner else ""
     e.description = (
         owner_line
@@ -303,7 +302,7 @@ def build_card(price: Optional[int], owner: Optional[str], rp_enabled: Optional[
 def build_summary(total_price: int, n_scanned: int, n_with_price: int) -> discord.Embed:
     missing = n_scanned - n_with_price
     covered_tax = round_half_up(total_price * 0.70) if total_price else 0
-    e = discord.Embed(title="<a:Butterfly_Red:1449273839052914891> Multi-Scan Summary", color=CARD_COLOR)
+    e = discord.Embed(title="<a:Butterfly_Red:1449273839052914891> Multi-Scan Summary")
     e.description = (
         f"**TOTAL GAMEPASS PRICE · **  `{total_price} Robux`\n"
         f"**COVERED TAX · **  `{covered_tax} Robux`\n"
@@ -360,7 +359,7 @@ async def build_embeds_for_ids(gp_ids: List[str], *, force: bool) -> List[discor
                     total_price += int(price)
                 return embed
             except Exception:
-                e = discord.Embed(title="<a:Butterfly_Red:1449273839052914891> Gamepass Summary", color=CARD_COLOR)
+                e = discord.Embed(title="<a:Butterfly_Red:1449273839052914891> Gamepass Summary")
                 e.description = (
                     "*Owner:* \n\n"
                     "**Gamepass Price · **  ``\n"
@@ -411,7 +410,7 @@ def _has_admin_access(interaction: discord.Interaction) -> bool:
 
 # ---------------- Commands ----------------
 def build_help_embed() -> discord.Embed:
-    e = discord.Embed(title="<a:Butterfly_Red:1449273839052914891> Commands", color=CARD_COLOR)
+    e = discord.Embed(title="<a:Butterfly_Red:1449273839052914891> Commands")
     e.add_field(
         name="Slash",
         value="`/ping`\n`/scan link_or_id:<value> force:<true|false>`\n`/multi links:<values> force:<true|false>`\n`/changeprofile image:<attachment> (admin only)`\n`/help`",
