@@ -273,8 +273,8 @@ def build_not_found_embed(gp_id: str) -> discord.Embed:
 
 
 # ---------------- Embeds ----------------
-# Match the Discord embed background so the accent bar disappears visually.
-CARD_COLOR = discord.Color(0x2B2D31)
+# Match Discord's default so the embed accent bar stays invisible.
+CARD_COLOR = discord.Color.default()
 SEPARATOR_LINE = "------------------------------"
 
 
