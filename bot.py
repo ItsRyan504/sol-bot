@@ -30,8 +30,8 @@ log = logging.getLogger("gp-scanner")
 
 # ---------------- Config ----------------
 STATUS_MESSAGES = [
-    "SCAN NOW TO CHECK GAMEPASS PRICES!",
-    "DON'T FORGET TO SCAN GAMEPASS LINKS!",
+    "SCAN NOW!",
+    "DON'T FORGET TO SCAN!",
 ]
 NOTE_TEXT = STATUS_MESSAGES[0]
 MAX_AVATAR_BYTES = 8 * 1024 * 1024
@@ -273,8 +273,8 @@ def build_not_found_embed(gp_id: str) -> discord.Embed:
 
 
 # ---------------- Embeds ----------------
-# Match Discord's default so the embed accent bar stays invisible.
-CARD_COLOR = discord.Color.default()
+# Match the embed background tone so the accent blends in.
+CARD_COLOR = discord.Color(0x2F3136)
 SEPARATOR_LINE = "------------------------------"
 
 
