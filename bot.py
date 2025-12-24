@@ -264,51 +264,149 @@ def regional_pricing_enabled(details: Optional[Dict[str, Any]]) -> Optional[bool
     return False
 
 
-def build_not_found_embed(gp_id: str) -> discord.Embed:
-    e = discord.Embed(title="Gamepass Not Found")
-    e.description = f"<a:Exclamation:1449272852338446457> Could not find gamepass `{gp_id}`."
-    e.add_field(name="Gamepass ID", value=f"`{gp_id}`", inline=True)
-    e.add_field(name="URL", value=f"[Open Gamepass](https://www.roblox.com/game-pass/{gp_id})", inline=True)
-    return e
+def build_not_found_container(gp_id: str) -> Dict[str, Any]:
+    content = (
+        f"<a:Exclamation:1449272852338446457> Could not find gamepass `{gp_id}`.\n"
+        f"**Gamepass ID · ** `{gp_id}`\n"
+        f"[Open Gamepass](https://www.roblox.com/game-pass/{gp_id})"
+    )
+    return make_container([make_text_display("Gamepass Not Found"), make_separator(divider=False, spacing=1), make_text_display(content)])
 
 
-# ---------------- Embeds ----------------
-# Match Discord's default so the accent disappears.
+# ---------------- Components V2 helpers ----------------
 SEPARATOR_LINE = "------------------------------"
+COMPONENTS_V2_FLAG = 1 << 15
+EPHEMERAL_FLAG = 1 << 6
 
 
-def build_card(price: Optional[int], owner: Optional[str], rp_enabled: Optional[bool], gp_id: str) -> discord.Embed:
+def make_text_display(content: str) -> Dict[str, Any]:
+    return {"type": 10, "content": content}
+
+
+def make_separator(*, divider: bool = True, spacing: int = 1) -> Dict[str, Any]:
+    return {"type": 14, "divider": divider, "spacing": spacing}
+
+
+def make_container(children: List[Dict[str, Any]], *, accent_color: Optional[int] = None) -> Dict[str, Any]:
+    payload: Dict[str, Any] = {"type": 17, "components": children}
+    if accent_color is not None:
+        payload["accent_color"] = accent_color
+    return payload
+
+
+def _component_size(component: Dict[str, Any]) -> int:
+    size = 1
+    ctype = component.get("type")
+    if ctype in {9, 17}:  # section or container
+        for child in component.get("components", []) or []:
+            size += _component_size(child)
+    if ctype == 9 and component.get("accessory"):
+        size += _component_size(component["accessory"])
+    return size
+
+
+def _chunk_components(components: List[Dict[str, Any]], limit: int = 40) -> List[List[Dict[str, Any]]]:
+    chunks: List[List[Dict[str, Any]]] = []
+    current: List[Dict[str, Any]] = []
+    current_size = 0
+    for comp in components:
+        comp_size = _component_size(comp)
+        if comp_size > limit:
+            if current:
+                chunks.append(current)
+                current = []
+                current_size = 0
+            chunks.append([comp])
+            continue
+        if current_size + comp_size > limit and current:
+            chunks.append(current)
+            current = []
+            current_size = 0
+        current.append(comp)
+        current_size += comp_size
+    if current:
+        chunks.append(current)
+    return chunks
+
+
+async def _post_components_payload(url: str, payload: Dict[str, Any]):
+    async with http_session() as sess:
+        async with sess.post(url, json=payload) as resp:
+            if resp.status >= 400:
+                body = await resp.text()
+                raise RuntimeError(f"Components V2 post failed ({resp.status}): {body[:200]}")
+
+
+async def send_components_message(
+    interaction: discord.Interaction,
+    components: List[Dict[str, Any]],
+    *,
+    ephemeral: bool = False,
+):
+    if not components:
+        return
+    flags = COMPONENTS_V2_FLAG | (EPHEMERAL_FLAG if ephemeral else 0)
+    url = f"https://discord.com/api/v10/webhooks/{interaction.application_id}/{interaction.token}"
+    chunks = _chunk_components(components)
+    for idx, chunk in enumerate(chunks):
+        payload = {"flags": flags, "components": chunk, "allowed_mentions": {"parse": []}}
+        try:
+            await _post_components_payload(url, payload)
+        except Exception as exc:
+            log.warning("Failed to send Components V2 chunk %d/%d: %s", idx + 1, len(chunks), exc)
+            await interaction.followup.send(
+                "<a:Exclamation:1449272852338446457> Failed to send formatted response.",
+                ephemeral=True,
+            )
+            break
+
+
+def build_card(price: Optional[int], owner: Optional[str], rp_enabled: Optional[bool], gp_id: str) -> Dict[str, Any]:
     rec = robux_received_after_fee(price)
     price_txt = f"{price} Robux" if price is not None else ""
     rec_txt = f"{rec} Robux" if rec is not None else ""
     rp_label = "Enabled" if rp_enabled else ("Disabled" if rp_enabled is False else "Unknown")
     rp_dot = "<a:Exclamation:1449272852338446457>" if rp_enabled else ("<a:Red_Check:1449273074456465418>" if rp_enabled is False else "<a:PenguHmmMath:1439407116111843388> ")
 
-    e = discord.Embed(title="Gamepass Summary")
-    owner_line = f"*Owner:* {owner}\n\n" if owner else ""
-    e.description = (
-        owner_line
-        + f"**Gamepass Price · **  `{price_txt}`\n"
-        + f"**You will receive · **  `{rec_txt}`\n"
-        + f"{SEPARATOR_LINE}\n"
-        + f"**Regional Pricing · **  {rp_dot} **{rp_label}**"
-    )
+    lines = []
+    if owner:
+        lines.append(f"*Owner:* {owner}")
+        lines.append("")
+    lines.append(f"**Gamepass Price · **  `{price_txt}`")
+    lines.append(f"**You will receive · **  `{rec_txt}`")
+    info_block = "\n".join(lines)
+    region_line = f"**Regional Pricing · **  {rp_dot} **{rp_label}**"
     url = f"https://www.roblox.com/game-pass/{gp_id}"
-    e.add_field(name="Gamepass ID", value=f"`{gp_id}`", inline=True)
-    e.add_field(name="URL", value=f"[Open Gamepass]({url})", inline=True)
-    return e
+    id_block = f"**Gamepass ID · ** `{gp_id}`\n[Open Gamepass]({url})"
+
+    return make_container(
+        [
+            make_text_display("Gamepass Summary"),
+            make_separator(divider=False, spacing=1),
+            make_text_display(info_block),
+            make_separator(divider=True, spacing=1),
+            make_text_display(region_line),
+            make_separator(divider=False, spacing=2),
+            make_text_display(id_block),
+        ]
+    )
 
 
-def build_summary(total_price: int, n_scanned: int, n_with_price: int) -> discord.Embed:
+def build_summary(total_price: int, n_scanned: int, n_with_price: int) -> Dict[str, Any]:
     missing = n_scanned - n_with_price
     covered_tax = round_half_up(total_price * 0.70) if total_price else 0
-    e = discord.Embed(title="<a:Butterfly_Red:1449273839052914891> Multi-Scan Summary")
-    e.description = (
+    content = (
         f"**TOTAL GAMEPASS PRICE · **  `{total_price} Robux`\n"
         f"**COVERED TAX · **  `{covered_tax} Robux`\n"
         f"**ITEMS SCANNED · **  `{n_scanned}` (with price: `{n_with_price}`, missing: `{missing}`)"
     )
-    return e
+    return make_container(
+        [
+            make_text_display("<a:Butterfly_Red:1449273839052914891> Multi-Scan Summary"),
+            make_separator(divider=True, spacing=1),
+            make_text_display(content),
+        ]
+    )
 
 
 # ---------------- Scan helpers ----------------
@@ -330,19 +428,19 @@ def extract_many_ids(text: str) -> List[str]:
     return uniq
 
 
-async def scan_one(gp_id: str, *, force: bool = False) -> Tuple[discord.Embed, Optional[int]]:
+async def scan_one(gp_id: str, *, force: bool = False) -> Tuple[Dict[str, Any], Optional[int]]:
     if force:
         _clear_gp_cache(gp_id)
     price, details = await best_price_and_details(gp_id, force=force)
     if price is None and details is None:
-        return build_not_found_embed(gp_id), None
+        return build_not_found_container(gp_id), None
     owner = extract_owner(details)
     rp = regional_pricing_enabled(details)
-    embed = build_card(price, owner, rp, gp_id)
-    return embed, price
+    container = build_card(price, owner, rp, gp_id)
+    return container, price
 
 
-async def build_embeds_for_ids(gp_ids: List[str], *, force: bool) -> List[discord.Embed]:
+async def build_components_for_ids(gp_ids: List[str], *, force: bool) -> List[Dict[str, Any]]:
     if not gp_ids:
         return []
     sem = asyncio.Semaphore(6)
@@ -353,34 +451,37 @@ async def build_embeds_for_ids(gp_ids: List[str], *, force: bool) -> List[discor
         nonlocal total_price, n_with_price
         async with sem:
             try:
-                embed, price = await scan_one(gid, force=force)
+                container, price = await scan_one(gid, force=force)
                 if price is not None:
                     n_with_price += 1
                     total_price += int(price)
-                return embed
+                return container
             except Exception:
-                e = discord.Embed(title="<a:Butterfly_Red:1449273839052914891> Gamepass Summary")
-                e.description = (
+                info_block = (
                     "*Owner:* \n\n"
                     "**Gamepass Price · **  ``\n"
-                    "**You will receive · **  ``\n"
-                    f"{SEPARATOR_LINE}\n\n"
-                    f"<a:Exclamation:1449272852338446457> Failed to scan ID {gid}"
+                    "**You will receive · **  ``"
                 )
-                e.add_field(name="Gamepass ID", value=f"`{gid}`", inline=True)
-                e.add_field(name="URL", value=f"[Open Gamepass](https://www.roblox.com/game-pass/{gid})", inline=True)
-                return e
+                alert_text = f"<a:Exclamation:1449272852338446457> Failed to scan ID {gid}"
+                err_container = make_container(
+                    [
+                        make_text_display("<a:Butterfly_Red:1449273839052914891> Gamepass Summary"),
+                        make_separator(divider=False, spacing=1),
+                        make_text_display(info_block),
+                        make_separator(divider=True, spacing=1),
+                        make_text_display(alert_text),
+                        make_separator(divider=False, spacing=2),
+                        make_text_display(
+                            f"**Gamepass ID · ** `{gid}`\n[Open Gamepass](https://www.roblox.com/game-pass/{gid})"
+                        ),
+                    ]
+                )
+                return err_container
 
     tasks = [asyncio.create_task(one(g)) for g in gp_ids]
-    embeds = await asyncio.gather(*tasks)
-    embeds.append(build_summary(total_price, len(gp_ids), n_with_price))
-    return embeds
-
-
-async def send_embeds_chunked(send_func, embeds: List[discord.Embed]):
-    CHUNK = 10
-    for i in range(0, len(embeds), CHUNK):
-        await send_func(embeds=embeds[i : i + CHUNK])
+    containers = await asyncio.gather(*tasks)
+    containers.append(build_summary(total_price, len(gp_ids), n_with_price))
+    return containers
 
 
 async def _set_next_presence():
@@ -409,15 +510,25 @@ def _has_admin_access(interaction: discord.Interaction) -> bool:
 
 
 # ---------------- Commands ----------------
-def build_help_embed() -> discord.Embed:
-    e = discord.Embed(title="<a:Butterfly_Red:1449273839052914891> Commands")
-    e.add_field(
-        name="Slash",
-        value="`/ping`\n`/scan link_or_id:<value> force:<true|false>`\n`/multi links:<values> force:<true|false>`\n`/changeprofile image:<attachment> (admin only)`\n`/help`",
-        inline=False,
+def build_help_components() -> List[Dict[str, Any]]:
+    commands_text = (
+        "`/ping`\n"
+        "`/scan link_or_id:<value> force:<true|false>`\n"
+        "`/multi links:<values> force:<true|false>`\n"
+        "`/changeprofile image:<attachment> (admin only)`\n"
+        "`/help`"
     )
-    e.set_footer(text="Tip: paste multiple links/IDs with spaces, commas, or newlines.")
-    return e
+    footer = "Tip: paste multiple links/IDs with spaces, commas, or newlines."
+    container = make_container(
+        [
+            make_text_display("<a:Butterfly_Red:1449273839052914891> Commands"),
+            make_separator(divider=False, spacing=1),
+            make_text_display(commands_text),
+            make_separator(divider=False, spacing=1),
+            make_text_display(footer),
+        ]
+    )
+    return [container]
 
 
 @bot.event
@@ -435,7 +546,8 @@ async def on_ready():
 
 @bot.tree.command(name="help", description="Show help")
 async def help_slash(interaction: discord.Interaction):
-    await interaction.response.send_message(embed=build_help_embed())
+    await interaction.response.defer(thinking=True, ephemeral=True)
+    await send_components_message(interaction, build_help_components(), ephemeral=True)
 
 
 @bot.tree.command(name="ping", description="Ping")
@@ -490,8 +602,8 @@ async def scan_slash(interaction: discord.Interaction, link_or_id: str, force: b
     gp_id = extract_gamepass_id(link_or_id)
     if not gp_id:
         return await interaction.followup.send("<a:Exclamation:1449272852338446457> Please provide a valid game-pass link or numeric ID.")
-    embed, _ = await scan_one(gp_id, force=force)
-    await interaction.followup.send(embed=embed)
+    container, _ = await scan_one(gp_id, force=force)
+    await send_components_message(interaction, [container])
 
 
 @bot.tree.command(name="multi", description="Scan multiple gamepasses")
@@ -501,12 +613,8 @@ async def multi_slash(interaction: discord.Interaction, links: str, force: bool 
     gp_ids = extract_many_ids(links)
     if not gp_ids:
         return await interaction.followup.send("<a:Exclamation:1449272852338446457> Provide at least one valid game-pass link or numeric ID.")
-    embeds = await build_embeds_for_ids(gp_ids, force=force)
-
-    async def _send(**kw):
-        await interaction.followup.send(**kw)
-
-    await send_embeds_chunked(_send, embeds)
+    components = await build_components_for_ids(gp_ids, force=force)
+    await send_components_message(interaction, components)
 
 
 if __name__ == "__main__":
