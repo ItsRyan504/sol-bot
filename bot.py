@@ -377,7 +377,7 @@ def build_card(price: Optional[int], owner: Optional[str], rp_enabled: Optional[
     info_block = "\n".join(lines)
     region_line = f"**Regional Pricing · **  {rp_dot} **{rp_label}**"
     url = f"https://www.roblox.com/game-pass/{gp_id}"
-    id_block = f"**Gamepass ID · ** `{gp_id}`\n[Open Gamepass]({url})"
+    id_block = f"**Gamepass ID · ** `{gp_id}` · [Open Gamepass]({url})"
 
     return make_container(
         [
@@ -472,7 +472,7 @@ async def build_components_for_ids(gp_ids: List[str], *, force: bool) -> List[Di
                         make_text_display(alert_text),
                         make_separator(divider=False, spacing=2),
                         make_text_display(
-                            f"**Gamepass ID · ** `{gid}`\n[Open Gamepass](https://www.roblox.com/game-pass/{gid})"
+                            f"**Gamepass ID · ** `{gid}` · [Open Gamepass](https://www.roblox.com/game-pass/{gid})"
                         ),
                     ]
                 )
