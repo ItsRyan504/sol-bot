@@ -3,6 +3,7 @@ import re
 import asyncio
 import logging
 import time
+from itertools import cycle
 from typing import Optional, Tuple, Dict, Any, List
 from urllib.parse import urlparse, parse_qs
 from decimal import Decimal, ROUND_HALF_UP
@@ -17,13 +18,17 @@ except Exception:
     pass
 
 import discord
-from discord.ext import commands
+from discord.ext import commands, tasks
 from discord import app_commands
 import aiohttp
 
 
 # ---------------- Config ----------------
-NOTE_TEXT = "[beta 0.1.5]"
+STATUS_MESSAGES = [
+    "SCAN NOW TO CHECK GAMEPASS PRICES!",
+    "DON'T FORGET TO SCAN GAMEPASS LINKS!",
+]
+NOTE_TEXT = STATUS_MESSAGES[0]
 CACHE_TTL_SECONDS = int(os.getenv("CACHE_TTL_SECONDS", "300"))
 API_RPS = float(os.getenv("API_RPS", "3"))
 API_BURST = int(os.getenv("API_BURST", "6"))
@@ -42,6 +47,7 @@ log = logging.getLogger("gp-scanner")
 # ---------------- Discord init ----------------
 intents = discord.Intents.default()
 bot = commands.Bot(command_prefix="!", intents=intents, help_command=None)
+_status_cycle = cycle(STATUS_MESSAGES)
 
 
 # ---------------- keep-alive ----------------
@@ -266,8 +272,8 @@ def build_not_found_embed(gp_id: str) -> discord.Embed:
 
 
 # ---------------- Embeds ----------------
-# Use a neutral gray accent for all embeds.
-CARD_COLOR = discord.Color(0x808080)
+# Match the Discord embed background so the accent bar disappears visually.
+CARD_COLOR = discord.Color(0x2B2D31)
 SEPARATOR_LINE = "------------------------------"
 
 
@@ -295,13 +301,12 @@ def build_card(price: Optional[int], owner: Optional[str], rp_enabled: Optional[
 
 def build_summary(total_price: int, n_scanned: int, n_with_price: int) -> discord.Embed:
     missing = n_scanned - n_with_price
-    fee_total = round_half_up(total_price * 0.30) if total_price else 0
-    covered_tax = max(total_price - fee_total, 0)
+    covered_tax = round_half_up(total_price * 0.70) if total_price else 0
     e = discord.Embed(title="<a:Butterfly_Red:1449273839052914891> Multi-Scan Summary", color=CARD_COLOR)
     e.description = (
-        f"**Total Gamepass Price · **  `{total_price} Robux`\n"
-        f"**Covered Tax · **  `{covered_tax} Robux`\n"
-        f"**Items scanned · **  `{n_scanned}` (with price: `{n_with_price}`, missing: `{missing}`)"
+        f"**TOTAL GAMEPASS PRICE · **  `{total_price} Robux`\n"
+        f"**COVERED TAX · **  `{covered_tax} Robux`\n"
+        f"**ITEMS SCANNED · **  `{n_scanned}` (with price: `{n_with_price}`, missing: `{missing}`)"
     )
     return e
 
@@ -378,6 +383,24 @@ async def send_embeds_chunked(send_func, embeds: List[discord.Embed]):
         await send_func(embeds=embeds[i : i + CHUNK])
 
 
+async def _set_next_presence():
+    message = next(_status_cycle)
+    await bot.change_presence(
+        status=discord.Status.online,
+        activity=discord.Activity(type=discord.ActivityType.watching, name=message),
+    )
+
+
+@tasks.loop(minutes=1)
+async def rotate_presence():
+    await _set_next_presence()
+
+
+@rotate_presence.before_loop
+async def before_rotate():
+    await bot.wait_until_ready()
+
+
 # ---------------- Commands ----------------
 def build_help_embed() -> discord.Embed:
     e = discord.Embed(title="<a:Butterfly_Red:1449273839052914891> Commands", color=CARD_COLOR)
@@ -393,10 +416,9 @@ def build_help_embed() -> discord.Embed:
 @bot.event
 async def on_ready():
     log.info("Logged in as %s (id: %s)", bot.user, bot.user.id)
-    await bot.change_presence(
-        status=discord.Status.online,
-        activity=discord.Activity(type=discord.ActivityType.watching, name=NOTE_TEXT),
-    )
+    await _set_next_presence()
+    if not rotate_presence.is_running():
+        rotate_presence.start()
     try:
         synced = await bot.tree.sync()
         log.info("Slash commands synced: %d", len(synced))
