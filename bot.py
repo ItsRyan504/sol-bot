@@ -267,8 +267,6 @@ def regional_pricing_enabled(details: Optional[Dict[str, Any]]) -> Optional[bool
 def build_not_found_container(gp_id: str) -> Dict[str, Any]:
     content = (
         f"<a:Exclamation:1449272852338446457> Could not find gamepass `{gp_id}`.\n"
-        f"**Gamepass ID · ** `{gp_id}`\n"
-        f"[Open Gamepass](https://www.roblox.com/game-pass/{gp_id})"
     )
     return make_container([make_text_display("Gamepass Not Found"), make_separator(divider=False, spacing=1), make_text_display(content)])
 
